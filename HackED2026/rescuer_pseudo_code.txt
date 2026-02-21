@@ -1,0 +1,42 @@
+/* The rescuer is a tag. It communicates directly to the computer */
+
+int get_distance() {
+    /*
+    - Must block/retry until the distance is received
+    - Returns the distance (round to an int)
+    */
+}
+
+void receive_signal(pattern 1, pattern 2, return message) {
+    /*
+    - Constantly read from radio Serial
+    - If the received message does not match a pattern, repeat until a message does
+    - Must be able to match pattern A OR pattern B
+    - Return a codified string to indicate which pattern it matched too
+    */
+}
+
+int main() {
+    set_role(tag);
+
+    int a0a1 = get_distance(0, 1);
+    int a0a2 = get_distance(0, 2);
+    int a0v3 = get_distance(0, 3); 
+    int a1a2 = get_distance(1, 2); 
+    int a1v3 = get_distance(1, 3); 
+    int a2v3 = get_distance(2, 3); 
+
+    // Send the distances to the laptop
+    send_wifi_data(device, distances);
+    
+    // Wait until the program has calculated the position of every device
+    receive_wifi_data(ok_signal);
+    
+    // Inform all anchors that the calibration is complete
+    send_radio_data(device, "OK TO PROCEED");
+    
+    // Wait until all anchors send their okay signal
+    recieve_radio_data(device, "SIGNAL IS ACKNOWLEDGE")
+
+    // Simply run the normal tag code, sending distances via wifi
+}

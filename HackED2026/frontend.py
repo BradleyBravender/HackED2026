@@ -38,7 +38,7 @@ class CommandTransmission():
             print("No echo received.")
 
 
-    def get_distances(self):
+    def get_range_data(self):
         # Receives commands from any ip addresses (not just the ones in esp_id)
         try:
             data, addr = self.sock.recvfrom(1024)
@@ -167,7 +167,8 @@ class BaseStation():
         self.points = {
             "anchor0": anchor0.get_coordinates(),
             "anchor1": anchor1.get_coordinates(),
-            "anchor2": anchor2.get_coordinates()
+            "anchor2": anchor2.get_coordinates(),
+            "victim": victim.get_coordinates(),
         }
 
 
@@ -203,19 +204,34 @@ class BaseStation():
             self.trilateration()
 
 
+    # TODO: Need to change this function to bridge sensor data
+    def get_distance(device1: Device, device2: Device) -> float:
+        x = 0
+        y = 1
+
+        x_delta = device1.get_coordinates[x] - device2.get_coordinates[x]
+        y_delta = device1.get_coordinates[y] - device2.get_coordinates[y]
+        magnitude = sqrt(x_delta**2 + y_delta**2)
+        
+        return magnitude
+
+
     def calibration(self) -> None:
         """Uses the relative distances between devices to calculate relative
         coordinates for each device.
         """
+
+        # Hard code these values to make the equation solvable
         a0x, a0y, a1x = 0, 0, 0
         
         # Retrieve the distances between each device
+        # TODO: write a bridging function to extract the distances from each device to each other
         a0a1 = get_distance(anchor0, anchor1)
         a0a2 = get_distance(anchor0, anchor2)
-        a0vt = get_distance(anchor0, victim_tag)
+        a0vt = get_distance(anchor0, victim)
         a1a2 = get_distance(anchor1, anchor2)
-        a1vt = get_distance(anchor1, victim_tag)
-        a2vt = get_distance(anchor2, victim_tag)
+        a1vt = get_distance(anchor1, victim)
+        a2vt = get_distance(anchor2, victim)
 
         def calibration_callback(unknowns):
             a1y, a2x, a2y, vtx, vty = unknowns
@@ -241,7 +257,7 @@ class BaseStation():
             anchor0.set_calc_coordinates(a0x, a0y)
             anchor1.set_calc_coordinates(a1x, a1y)
             anchor2.set_calc_coordinates(a2x, a2y)
-            victim_tag.set_calc_coordinates(vtx, vty)
+            victim.set_calc_coordinates(vtx, vty)
 
             # Update the internal points object
             self.points = {
@@ -263,7 +279,7 @@ class BaseStation():
         
         # TODO: Need to add functionality to accommodate the distances from 
         #TODO: either a victim or rescuer
-        distances = self.data_obj.get_distances()
+        distances = self.data_obj.get_range_data()
         if not distances:
             return
         
@@ -327,8 +343,23 @@ if __name__=="__main__":
     anchor1 = Device(0, 0)
     anchor2 = Device(205, 0)
     # These two tags need to be initialized
-    victim_tag = Device(0, 0)
+    victim = Device(0, 0)
     rescuer_tag = Device(0, 0)
 
     # Run the program
     obj = BaseStation()
+
+
+"""
+- Get victim working. 
+- Embed delay into set role
+- Get rotation working
+- Get calibration working
+
+
+0  10.42.0.0    anchor0  
+1  10.42.0.10   anchor1
+2  10.42.0.20   anchor2
+3  10.42.0.30   victim (anchor)
+4  10.42.0.40   rescuer (tag)
+"""
