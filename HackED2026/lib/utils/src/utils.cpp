@@ -317,3 +317,107 @@ void parse_range(String message, int ranges[]) {
         token = strtok(NULL, ",");
     }
 }
+
+
+//////////////
+// BARRIERS //
+//////////////
+
+//-----------------------------------------------------------------------------
+
+/* C: send a get_distance(x, y) string. Block until a distance is received, or 
+until the timeout period is reached. If a distance is received, return it. If not,
+loop again */
+int get_distance(int id1, int id2) { 
+
+    const unsigned long timeout_ms = 200;  // timeout per attempt
+    String message;
+
+    while (true) {
+        // Send out a request for the distance between boards id1 and id2
+        String request = "get_distance(" + String(id1) + "," + String(id2) + ")";
+
+        send_radio_data(request, 1000, 0);
+
+        unsigned long start_time = millis();
+
+        while (millis() - start_time < timeout_ms) {
+            // Now listen until the distance is returned
+            // message = "";
+
+            // If a message is received...
+            if (read_serial(message, 0)) {
+                message.trim();
+                int distance = message.toInt();
+
+                return distance;
+            }
+
+            delay(1);
+        } 
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/* F: Continuously read the serial monitor until "ID,ACK" is received from each
+anchor */
+const int NUM_IDS = 4;  // IDs 0..3
+
+// Returns true if all IDs have been received
+bool all_received(bool received[]) {
+    for (int i = 0; i < NUM_IDS; i++) {
+        if (!received[i]) return false;
+    }
+    return true;
+}
+
+
+void listen_for_ack() {
+    bool received[NUM_IDS] = {false, false, false, false};
+    String message;
+
+    unsigned long start_time = millis();
+    const unsigned long timeout_ms = 5000;  // total listen timeout
+
+    while (!all_received(received) && millis() - start_time < timeout_ms) {
+        if (read_serial(message, 0)) {  // assume this is non-blocking
+            message.trim();
+            // Message format: "ID,ACK"
+            int commaIndex = message.indexOf(',');
+            if (commaIndex > 0) {
+                int id = message.substring(0, commaIndex).toInt();
+                if (id >= 0 && id < NUM_IDS) {
+                    received[id] = true;
+                    Serial.print("Received ACK from ID: ");
+                    Serial.println(id);
+                }
+            }
+        }
+        delay(1); // small delay to prevent tight CPU loop
+    }
+
+    if (all_received(received)) {
+        Serial.println("All ACKs received!");
+    } else {
+        Serial.println("Timeout reached before receiving all ACKs.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/* Q: Continuously read the serial monitor until "SUCCESS" is received, but only 
+from device x */
+wait_for_measurement(int id) {}
+
+//-----------------------------------------------------------------------------
+
+/* N/O: Block until "calibration complete" is received, or, until 
+"get_distance(x, y)" is received where x or y matches the device's ID. Determine
+if it was x or y that matched. */
+measurement_loop() {}
+
+//-----------------------------------------------------------------------------
+
+/* The tag needs to recieve a go-ahead from the laptop*/
+receive_wifi_data(ok_signal);
