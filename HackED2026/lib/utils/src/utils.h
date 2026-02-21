@@ -30,7 +30,7 @@
 
 #define NUM_ANCHORS 8
 #define BUFF_SIZE 5 // The number of ranges in the buffer at a time
-#define STABILITY_THRESHOLD 5 // The total variance range measurements can have
+#define STABILITY_THRESHOLD 10 // The total variance range measurements can have
 
 enum DeviceRole { TAG = 0, ANCHOR = 1, UNINITIALIZED = 2 };
 
@@ -58,6 +58,8 @@ struct DeviceInfo {
 
 struct RangeBuffer {
     int buffer[BUFF_SIZE];
+    // Not all anchor distances converge at the same time. I don't
+    bool continue_flag;
 };
 
 /////////////////////////
@@ -121,12 +123,18 @@ void set_delay(int delay);
 bool read_serial(String& message, boolean debug);
 
 
+bool get_raw_ranges(DeviceInfo& device, int parsed_ranges[]);
+
+
+void get_converged_ranges(DeviceInfo& device, int parsed_ranges[NUM_ANCHORS]);
+
+
 /// @brief Parses the software version in the AT+GETVER command
 /// @param msg 
 /// @return 
 String parse_software_version(DeviceInfo& device, String version);
 
 
-// String parse_range(char[] message);
+void parse_range(String message, int ranges[]);
 
 #endif

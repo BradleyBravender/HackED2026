@@ -176,99 +176,98 @@ bool read_serial(String& message, boolean debug) {
 }
 
 
-// int get_range(void) {
-//     int buf_size = 5;
-//     int stability_threshold = 5;
-//     int buffer[buf_size];
-//     int index = 0;
-//     bool filled = false;
+bool get_raw_ranges(DeviceInfo& device, int parsed_ranges[]) {
+    String message = "";
+    read_serial(message, 0);
+    
+    if (message.length() > 0) {
+        parse_range(message, parsed_ranges);
+        
+        // send_wifi_data(device, 
+        //     String("Raw Value: ") +
+        //     String(parsed_ranges[0]) + ", " + 
+        //     String(parsed_ranges[1]) + ", " + 
+        //     String(parsed_ranges[2]) + ", " + 
+        //     String(parsed_ranges[3]) + ", " + 
+        //     String(parsed_ranges[4]) + ", " + 
+        //     String(parsed_ranges[5]) + ", " + 
+        //     String(parsed_ranges[6]) + ", " + 
+        //     String(parsed_ranges[7]) + "\n"
+        // );
 
-//     while (true) {
-//         int new_value = get_measurement();
+        return true;
 
-//         buffer[index] = new_value;
-//         index = (index + 1) % buf_size;
+    }
 
-//         // At this point, we know we've gone through the whole buffer
-//         if (index == 0)
-//             filled = true;
-
-//         if (!filled)
-//             continue;
-
-//         int max = buffer[0];
-//         int min = buffer[0];
-//         int sum = buffer[0];
-
-//         for (int i = 1; i < buf_size; i++) {
-//             if (buffer[i] > max) max = buffer[i];
-//             if (buffer[i] < min) min = buffer[i];
-//             sum += buffer[i];
-//         }
-
-//         if ((max - min) < stability_threshold) {
-//             // The mean value
-//             return sum / buf_size;
-//         }
-//     }
-// }
+    return false;
+}
 
 
-// int sample_index = 0;
+void get_converged_ranges(DeviceInfo& device, int parsed_ranges[NUM_ANCHORS]) {
+    struct RangeBuffer buff_array[NUM_ANCHORS] = {};
+    int index = 0;
+    bool filled = false;
 
+    while (true) {
+        // Returns a list of distances
+        if (!get_raw_ranges(device, parsed_ranges)) {
+            delay(10);
+            continue;
+        };        
 
-// void get_ranges(int ranges[NUM_ANCHORS]) {
-//     struct RangeBuffer buff_array[NUM_ANCHORS];
-//     int index = 0;
-//     bool filled = false;
+        for (int i = 0; i < NUM_ANCHORS; i++)  {
+            buff_array[i].buffer[index] = parsed_ranges[i];
+        }
 
-//     while (true) {
-//         // Returns a list of distances
-//         get_measurement(ranges);
+        index = (index + 1) % BUFF_SIZE; 
 
-//         for (int i = 0; i < NUM_ANCHORS; i++) 
-//             buff_array[i].buffer[index] = ranges[i];
+        // At this point, we know we've gone through the whole buffer
+        if (index == 0)
+            filled = true;
 
-//         index = (index + 1) % BUFF_SIZE;
+        if (!filled)
+            continue;
 
-//         // At this point, we know we've gone through the whole buffer
-//         if (index == 0)
-//             filled = true;
+        bool can_return = true;
 
-//         if (!filled)
-//             continue;
+        // Reset max, min, and sum after every buffer update
+        for (int i = 0; i < NUM_ANCHORS; i++) {
+            int max = buff_array[i].buffer[0];
+            int min = buff_array[i].buffer[0];
+            int sum = 0;
 
-//         bool can_return = true;
-
-//         // Reset max, min, and sum after every buffer update
-//         for (int i = 0; i < NUM_ANCHORS; i++) {
-//             int max = buff_array[i].buffer[0];
-//             int min = buff_array[i].buffer[0];
-//             int sum = buff_array[i].buffer[0];
-
-//             for (int j = 1; j < BUFF_SIZE; j++) {
-//                 int v = buff_array[i].buffer[j];
+            for (int j = 0; j < BUFF_SIZE; j++) {
+                int v = buff_array[i].buffer[j];
                 
-//                 if (v > max) max = v;
-//                 if (v < min) min = v;
-//                 sum += v;
-//             }
+                if (v > max) max = v;
+                if (v < min) min = v;
 
-//             if (max - min > STABILITY_THRESHOLD) {
-//                 can_return = false;
-//                 break;
-//             }
+                if (v > 0 && sum > LONG_MAX - v) {
+                    send_wifi_data(device, "WARNING: sum approaching LONG_MAX");
+                }
+                if (v < 0 && sum < LONG_MIN - v) {
+                    send_wifi_data(device, "WARNING: sum approaching LONG_MIN");
+                }
 
-//             // Calculate the mean distance to the ith anchor
-//             ranges[i] = sum / BUFF_SIZE;
+                sum += v;
+            }
 
-//         }
+            if (max - min > STABILITY_THRESHOLD) {
+                can_return = false;
+                break;
+            }
 
-//         // can_return is true when all distances have converged
-//         if (can_return) return;
+            // Calculate the mean distance to the ith anchor
+            parsed_ranges[i] = sum / BUFF_SIZE;
 
-//     }
-// }
+        }
+
+        // can_return is true when all distances have converged
+        if (can_return) return;
+
+        delay(5);
+    }
+}
 
 /////////////
 // PARSERS //
@@ -291,34 +290,30 @@ String parse_software_version(DeviceInfo& device, String version) {
 }
 
 
-// void parse_range(char message[]) {
-//     int i = 0;
-//     int ranges[8];
+void parse_range(String message, int ranges[]) {
+    int i = 0;
 
-//     char *start = strstr(message, "range:(");
-//     if (!start) return;
-//     // Move past "range:(""
-//     start += 7;
+    // Convert Arduino String to C string
+    char buf[128];               // Make sure buffer is big enough
+    message.toCharArray(buf, sizeof(buf));
 
-//     char *end = strchr(start, ')');
-//     if(!end) return;
+    char *start = strstr(buf, "range:(");
+    if (!start) return;
+    // Move past "range:(""
+    start += 7;
 
-//     char temp[128];  // Make sure it's large enough
-//     size_t len = end - start;
-//     strncpy(temp, start, len);
-//     temp[len] = '\0';
+    char *end = strchr(start, ')');
+    if(!end) return;
 
-//     // Tokenize by comma
-//     char *token = strtok(temp, ",");
-//     while (token && i < 8) {
-//         ranges[i++] = atoi(token);  // Convert to int
-//         token = strtok(NULL, ",");
-//     }
+    char temp[128];  // Make sure it's large enough
+    size_t len = end - start;
+    strncpy(temp, start, len);
+    temp[len] = '\0';
 
-//     // Print result
-//     for (int j = 0; j < i; j++) {
-//         printf("%d ", ranges[j]);
-//     }
-//     printf("\n");
-
-// }
+    // Tokenize by comma
+    char *token = strtok(temp, ",");
+    while (token && i < 8) {
+        ranges[i++] = atoi(token);  // Convert to int
+        token = strtok(NULL, ",");
+    }
+}
