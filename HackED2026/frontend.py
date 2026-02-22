@@ -339,11 +339,11 @@ class BaseStation():
 if __name__=="__main__":
 
     # For now, hard code these locations
-    anchor0 = Device(205, 325)
-    anchor1 = Device(0, 0)
-    anchor2 = Device(205, 0)
+    anchor0 = Device(0, 0)
+    anchor1 = Device(980, 0)
+    anchor2 = Device(1035, 719)
     # These two tags need to be initialized
-    victim = Device(0, 0)
+    victim = Device(162, 961)
     rescuer_tag = Device(0, 0)
 
     # Run the program
