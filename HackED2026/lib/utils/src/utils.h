@@ -62,6 +62,12 @@ struct RangeBuffer {
     bool continue_flag;
 };
 
+struct RData {
+    String senderID;
+    String message;
+    bool valid;  // Indicates whether parsing succeeded
+};
+
 /////////////////////////
 // FUNCTION PROTOTYPES //
 /////////////////////////

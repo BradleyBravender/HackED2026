@@ -29,16 +29,16 @@ void setup() {
     // Send the distances to the laptop
     send_wifi_data(device, distances);
     
-    // Wait until the program has calculated the position of every device.
+    // Wait until the laptop running the program has calculated the position of 
+    // every device, and sends an ok signal
     // TODO
     receive_wifi_data(ok_signal);
     
     // Inform all anchors that the calibration is complete
-    send_radio_data("CALIBRATION COMPLETE", 1000, 0);
+    send_radio_data("AT+DATA=20,CALIBRATION COMPLETE", 1000, 0);
     
     // Wait until all anchors send their okay signal
-    // TODO
-    recieve_radio_data(device, "SIGNAL IS ACKNOWLEDGE")
+    listen_for_ack();
 
 
 }

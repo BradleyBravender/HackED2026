@@ -70,10 +70,8 @@ String cap_cmd() {
 
 String send_radio_data(String command, const int timeout, boolean debug) {
     String response = "";
-    // command = command + "\r\n";
 
-    // Sends the string via WiFi
-    // send_wifi_data(command);
+
     // Sends the string to other devices via radio
     // The command string contains 'AT+DATA=<# of chars>,<message>'
     SERIAL_AT.println(command); // send the read character to the SERIAL_LOG
@@ -87,7 +85,6 @@ String send_radio_data(String command, const int timeout, boolean debug) {
             response += c;
         }
     }
-    //if (debug) send_wifi_data("Response: " + response);
 
     return response;
 }
@@ -98,6 +95,24 @@ void send_wifi_data(DeviceInfo& device, const String& message) {
     device.udp.beginPacket(device.target_ip, TARGET_PORT);
     device.udp.print(msg);
     device.udp.endPacket();
+}
+
+
+bool read_serial(String& message, boolean debug) {
+    if (!SERIAL_AT.available()) return false;
+
+    String line = SERIAL_AT.readStringUntil('\n');
+    line.trim();
+
+    if (line.length() == 0) return false;
+
+    if (debug) {
+        Serial.print("RAW: ");
+        Serial.println(line);
+    }
+    
+    message = line;    
+    return true;
 }
 
 
@@ -155,24 +170,6 @@ void set_delay(int delay) {
     send_radio_data(String("AT+SETANT=") + String(delay), 2000, 0);
     send_radio_data("AT+SAVE", 2000, 0); // Save the config in non-volatile flash
     send_radio_data("AT+RESTART", 2000, 0); // Reload the config saved in flash memory
-}
-
-
-bool read_serial(String& message, boolean debug) {
-    if (!SERIAL_AT.available()) return false;
-
-    String line = SERIAL_AT.readStringUntil('\n');
-    line.trim();
-
-    if (line.length() == 0) return false;
-
-    if (debug) {
-        Serial.print("RAW: ");
-        Serial.println(line);
-    }
-    
-    message = line;    
-    return true;
 }
 
 
@@ -318,6 +315,39 @@ void parse_range(String message, int ranges[]) {
     }
 }
 
+// For parsing R+DATA messages
+RData parse_rdata(const String& line) {
+    RData result;
+    result.valid = false;  // default to invalid
+
+    if (!line.startsWith("AT+RDATA=")) return result;
+
+    // Remove the prefix
+    String data = line.substring(strlen("AT+RDATA="));
+    data.trim();
+
+    int commaCount = 0;
+    int lastPos = 0;
+    for (int i = 0; i < data.length(); i++) {
+        if (data[i] == ',') {
+            commaCount++;
+            if (commaCount == 1) {  // sender ID is after the first comma
+                result.senderID = data.substring(lastPos, i);
+                result.senderID.trim();
+            }
+            if (commaCount == 4) {  // message starts after the 4th comma
+                result.message = data.substring(i + 1);
+                result.message.trim();
+                break;  // done parsing
+            }
+            lastPos = i + 1;
+        }
+    }
+
+    result.valid = (result.senderID.length() > 0 && result.message.length() > 0);
+    return result;
+}
+
 
 //////////////
 // BARRIERS //
@@ -335,7 +365,7 @@ int get_distance(int id1, int id2) {
 
     while (true) {
         // Send out a request for the distance between boards id1 and id2
-        String request = "get_distance(" + String(id1) + "," + String(id2) + ")";
+        String request = "AT+DATA=17,get_distance(" + String(id1) + "," + String(id2) + ")";
 
         send_radio_data(request, 1000, 0);
 
@@ -372,25 +402,27 @@ bool all_received(bool received[]) {
     return true;
 }
 
-
+// TODO: Received messages will be of the form AT+RDATA...
 void listen_for_ack() {
-    bool received[NUM_IDS] = {false, false, false, false};
+    bool received[NUM_IDS] = { false };
     String message;
 
     unsigned long start_time = millis();
     const unsigned long timeout_ms = 5000;  // total listen timeout
 
     while (!all_received(received) && millis() - start_time < timeout_ms) {
-        if (read_serial(message, 0)) {  // assume this is non-blocking
+        if (read_serial(message, 0)) {  
             message.trim();
             // Message format: "ID,ACK"
             int commaIndex = message.indexOf(',');
             if (commaIndex > 0) {
+                // Parse the message
                 int id = message.substring(0, commaIndex).toInt();
-                if (id >= 0 && id < NUM_IDS) {
+                String ack = message.substring(commaIndex + 1);
+                ack.trim();
+
+                if (ack == "ACK" && id >= 0 && id < NUM_IDS && !received[id]){
                     received[id] = true;
-                    Serial.print("Received ACK from ID: ");
-                    Serial.println(id);
                 }
             }
         }
@@ -408,16 +440,36 @@ void listen_for_ack() {
 
 /* Q: Continuously read the serial monitor until "SUCCESS" is received, but only 
 from device x */
-wait_for_measurement(int id) {}
+bool wait_for_measurement(int sender_id) {
+    String message;
+    unsigned long start_time = millis();
+    const unsigned long timeout_ms = 5000;  // timeout per attempt
+
+    while (millis() - start_time < timeout_ms) {
+        if (read_serial(message, 0)) {  // returns true if a line was read
+            message.trim();
+            RData r = parse_rdata(message);
+
+            // If the sender is the other 'get_distance' device and the message is 'SUCCESS'
+            if (r.valid && r.senderID.toInt() == sender_id && r.message == "SUCCESS") {
+                return true;  // measurement received successfully
+            }
+        }
+        delay(1);  // small delay to avoid tight CPU loop
+    }
+
+    // Timeout reached without receiving SUCCESS from the specified device
+    return false;
+}
 
 //-----------------------------------------------------------------------------
 
 /* N/O: Block until "calibration complete" is received, or, until 
 "get_distance(x, y)" is received where x or y matches the device's ID. Determine
 if it was x or y that matched. */
-measurement_loop() {}
+// measurement_loop() {}
 
 //-----------------------------------------------------------------------------
 
 /* The tag needs to recieve a go-ahead from the laptop*/
-receive_wifi_data(ok_signal);
+// receive_wifi_data(ok_signal);
